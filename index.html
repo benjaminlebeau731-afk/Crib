@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cribbage Game (Online)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, .card-suit {
+            font-family: 'Cinzel', serif;
+        }
+
+        .playing-card {
+            width: 70px;
+            height: 100px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            user-select: none;
+            border: 1px solid #cbd5e1;
+        }
+        
+        @media (min-width: 768px) {
+             .playing-card {
+                 width: 90px;
+                 height: 130px;
+             }
+        }
+
+        .playing-card:hover:not(.disabled):not(.hidden-card) {
+            transform: translateY(-10px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        .playing-card.selected {
+            transform: translateY(-20px) !important;
+            border: 2px solid #fbbf24;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
+        }
+
+        .playing-card.disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+            filter: grayscale(0.5);
+            transform: none !important;
+        }
+
+        .playing-card.hidden-card {
+            background: repeating-linear-gradient(
+                45deg,
+                #b91c1c,
+                #b91c1c 10px,
+                #991b1b 10px,
+                #991b1b 20px
+            );
+            border: 2px solid #fff;
+            cursor: default;
+        }
+
+        .card-value { font-size: 1.25rem; font-weight: bold; line-height: 1; }
+        @media (min-width: 768px) { .card-value { font-size: 1.5rem; } }
+        .card-suit { font-size: 1.5rem; align-self: center; flex-grow: 1; display: flex; align-items: center; }
+        @media (min-width: 768px) { .card-suit { font-size: 2.5rem; } }
+
+        .suit-hearts, .suit-diamonds { color: #dc2626; }
+        .suit-spades, .suit-clubs { color: #1e293b; }
+        .bottom-val { align-self: flex-end; transform: rotate(180deg); }
+
+        .crib-zone, .pegging-zone {
+            min-height: 140px;
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .hand-container {
+            display: flex;
+            justify-content: center;
+            gap: -20px;
+            min-height: 110px;
+        }
+        @media (min-width: 768px) { .hand-container { min-height: 140px; } }
+        .hand-container .playing-card { margin: 0 4px; }
+
+        .board-container {
+            background-color: #d97706;
+            background-image: 
+                radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.3) 100%),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
+            border: 8px solid #78350f;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 20px rgba(0,0,0,0.5);
+            position: relative;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .track-group {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+            background: rgba(0,0,0,0.1);
+            padding: 4px;
+            border-radius: 6px;
+        }
+
+        .board-hole {
+            width: 10px;
+            height: 10px;
+            background-color: #451a03;
+            border-radius: 50%;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.8), 0 1px 1px rgba(255,255,255,0.2);
+            position: relative;
+        }
+
+        .board-peg {
+            width: 12px;
+            height: 20px;
+            border-radius: 6px 6px 2px 2px;
+            position: absolute;
+            bottom: 2px;
+            left: -1px;
+            box-shadow: -2px 2px 4px rgba(0,0,0,0.5), inset -2px 0 4px rgba(0,0,0,0.3);
+            z-index: 10;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: bottom center;
+        }
+        .board-peg::after {
+             content: ''; position: absolute; top: 2px; left: 2px; width: 4px; height: 4px;
+             background: rgba(255,255,255,0.6); border-radius: 50%;
+        }
+        .board-peg.player { background: linear-gradient(to right, #2563eb, #60a5fa); }
+        .board-peg.computer { background: linear-gradient(to right, #dc2626, #f87171); }
+
+        #message-modal, #lobby-screen {
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(5px);
+        }
+
+        @keyframes deal {
+            from { opacity: 0; transform: translateY(-50px) scale(0.8); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-deal { animation: deal 0.4s ease-out forwards; }
+        
+        @keyframes pulse-border {
+            0% { border-color: rgba(251, 191, 36, 0.5); box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+            50% { border-color: rgba(251, 191, 36, 1); box-shadow: 0 0 15px rgba(251, 191, 36, 0.5); }
+            100% { border-color: rgba(251, 191, 36, 0.5); box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+        }
+        .highlight-zone { animation: pulse-border 1.5s infinite; border: 2px solid rgba(251,191,36,0.5); }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <header class="text-center mb-6">
+        <h1 class="text-4xl md:text-5xl font-bold text-yellow-400 drop-shadow-lg tracking-wider mb-2">CRIBBAGE</h1>
+        
+        <div class="flex justify-between items-center max-w-3xl mx-auto bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl">
+            <div class="text-left w-24">
+                <h2 class="text-xl text-blue-400 font-bold">You</h2>
+                <div class="text-3xl font-mono" id="player-score">0</div>
+            </div>
+            
+            <div class="flex flex-col items-center flex-grow mx-4">
+                 <div class="text-sm uppercase tracking-widest text-slate-400 mb-2">Target: 121</div>
+                 
+                 <div class="board-container w-full max-w-2xl hidden md:block" id="cribbage-board-ui">
+                     <div class="flex justify-between mb-2 items-center">
+                         <div class="text-blue-200 font-bold text-xs mr-2">P1</div>
+                         <div class="flex gap-2 flex-grow justify-between" id="track-player"></div>
+                     </div>
+                     <div class="h-1 w-full bg-yellow-900/50 my-2 rounded-full relative"></div>
+                     <div class="flex justify-between mt-2 items-center">
+                         <div id="p2-track-label" class="text-red-200 font-bold text-xs mr-2">P2</div>
+                         <div class="flex gap-2 flex-grow justify-between" id="track-computer"></div>
+                     </div>
+                     <div class="absolute right-4 top-1/2 transform -translate-y-1/2 w-8 h-16 border-l-4 border-dashed border-yellow-400 flex items-center justify-end pr-1">
+                          <div class="board-hole" id="win-hole" style="width:14px; height:14px;"></div>
+                     </div>
+                 </div>
+
+                 <div class="w-full bg-slate-700 rounded-full h-4 relative overflow-hidden md:hidden mt-2">
+                     <div id="progress-player" class="bg-blue-500 h-4 absolute top-0 left-0 transition-all duration-500" style="width: 0%; z-index: 2;"></div>
+                     <div id="progress-computer" class="bg-red-500 h-4 absolute top-0 left-0 transition-all duration-500 opacity-70" style="width: 0%; z-index: 1;"></div>
+                 </div>
+                 
+                 <div class="mt-4 text-sm font-semibold text-yellow-300 bg-slate-900/80 px-4 py-1 rounded-full border border-slate-700" id="game-phase-text">Connecting...</div>
+            </div>
+
+            <div class="text-right w-24">
+                <h2 class="text-xl text-red-400 font-bold" id="opponent-name-tag">Opponent</h2>
+                <div class="text-3xl font-mono" id="computer-score">0</div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow">
+        
+        <div class="lg:col-span-2 flex flex-col gap-6">
+            <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700 shadow-lg relative">
+                <div class="absolute top-2 left-4 text-slate-400 text-sm" id="opponent-hand-label">Opponent's Hand</div>
+                <div id="computer-hand" class="hand-container mt-4"></div>
+            </div>
+
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex-grow flex flex-col">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="text-slate-300 font-semibold">Play Area</div>
+                    <div class="bg-slate-900 px-3 py-1 rounded text-yellow-400 font-mono font-bold">
+                        Peg Count: <span id="peg-count-display">0</span>
+                    </div>
+                </div>
+                
+                <div id="pegging-zone" class="pegging-zone flex-grow">
+                    <div class="text-slate-500 italic" id="pegging-placeholder">Cards played will appear here...</div>
+                </div>
+                
+                <div class="mt-4 flex justify-between text-sm text-slate-400">
+                    <div id="dealer-indicator">Dealer: <span class="text-white font-bold" id="current-dealer">-</span></div>
+                    <div><span class="text-white font-bold" id="whose-turn">-</span></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/60 p-4 rounded-xl border border-slate-700 shadow-lg relative">
+                <div class="absolute top-2 left-4 text-slate-400 text-sm">Your Hand</div>
+                <div id="player-hand" class="hand-container mt-4"></div>
+                <div class="mt-4 text-center">
+                    <button id="action-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-colors hidden">
+                        Confirm Discard
+                    </button>
+                    <button id="go-btn" class="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-colors hidden">
+                        Say "Go"
+                    </button>
+                    <button id="next-phase-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-colors hidden">
+                        Next Phase
+                    </button>
+                    <!-- Loading text for async waits -->
+                    <div id="waiting-text" class="text-slate-400 italic hidden">Waiting for opponent...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-6">
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex justify-around items-center min-h-[160px]">
+                <div class="text-center">
+                    <div class="text-xs text-slate-400 mb-2 uppercase tracking-wide">Deck</div>
+                    <div class="playing-card hidden-card mx-auto shadow-[2px_2px_0px_#0f172a,4px_4px_0px_#0f172a]"></div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-slate-400 mb-2 uppercase tracking-wide">Starter Card</div>
+                    <div id="starter-card-zone" class="min-w-[70px] min-h-[100px] md:min-w-[90px] md:min-h-[130px] border-2 border-dashed border-slate-600 rounded-lg flex items-center justify-center bg-slate-900/50"></div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-600 shadow-xl flex-grow">
+                <div class="text-sm text-slate-400 mb-2 uppercase tracking-wide text-center">The Crib <span id="crib-owner" class="text-white font-bold text-xs ml-1"></span></div>
+                <div id="crib-zone" class="crib-zone flex-col h-full">
+                    <div class="text-slate-500 text-sm text-center px-4" id="crib-placeholder">Waiting for phase...</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner h-48 flex flex-col">
+                <div class="text-xs text-slate-500 uppercase tracking-widest border-b border-slate-700 pb-2 mb-2 font-bold flex justify-between">
+                    <span>Game Log</span>
+                    <span id="network-indicator" class="text-emerald-500 hidden" title="Connected"><i class="fas fa-wifi"></i></span>
+                </div>
+                <div id="game-log" class="overflow-y-auto flex-grow text-sm space-y-1 pr-2 font-mono custom-scrollbar"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="lobby-screen" class="fixed inset-0 z-[100] flex items-center justify-center">
+        <div class="bg-slate-800 p-8 rounded-2xl max-w-md w-full border border-slate-600 shadow-2xl mx-4 text-center">
+            <h2 class="text-4xl text-yellow-400 font-cinzel font-bold mb-6 drop-shadow-md">Play Cribbage</h2>
+            <div class="space-y-4">
+                <button id="btn-play-ai" class="w-full bg-slate-700 hover:bg-slate-600 p-4 rounded-xl text-white font-bold shadow-lg transition-colors border border-slate-600">
+                    <i class="fas fa-robot mr-2"></i> Play vs Computer
+                </button>
+                
+                <div class="flex items-center justify-center my-4">
+                    <div class="border-t border-slate-600 flex-grow"></div>
+                    <span class="px-4 text-slate-400 font-bold text-sm">OR ONLINE P2P</span>
+                    <div class="border-t border-slate-600 flex-grow"></div>
+                </div>
+                
+                <button id="btn-host" class="w-full bg-blue-600 hover:bg-blue-500 p-4 rounded-xl text-white font-bold shadow-lg transition-colors">
+                    <i class="fas fa-server mr-2"></i> Host Game
+                </button>
+                <div id="host-info" class="hidden mt-2 p-4 bg-slate-900 rounded-xl text-center text-sm text-slate-300 border border-slate-700">
+                    <div class="text-slate-400 mb-1 uppercase tracking-wider text-xs">Your Room Code</div>
+                    <div id="room-id-display" class="font-mono text-yellow-400 font-bold text-2xl select-all cursor-pointer bg-slate-800 py-2 rounded">Generating...</div>
+                    <div class="text-xs mt-2 text-slate-500">Share this code with a friend. Waiting for them to join...</div>
+                </div>
+                
+                <div class="flex flex-col gap-2 mt-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                    <div class="text-left text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Join a Game</div>
+                    <div class="flex gap-2">
+                        <input type="text" id="join-id-input" placeholder="Paste Room Code" class="flex-grow bg-slate-800 border border-slate-600 rounded-lg p-3 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                        <button id="btn-join" class="bg-emerald-600 hover:bg-emerald-500 px-6 rounded-lg text-white font-bold shadow-lg transition-colors">Join</button>
+                    </div>
+                </div>
+                
+                <div id="connection-status" class="text-center text-sm text-yellow-400 h-6 mt-2 transition-opacity duration-300"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-modal" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+        <div class="bg-slate-800 border border-slate-600 p-8 rounded-2xl shadow-2xl max-w-md w-full text-center mx-4 transform transition-all scale-95 opacity-0" id="modal-content">
+            <h2 id="modal-title" class="text-3xl font-bold mb-4 text-yellow-400 font-cinzel">Title</h2>
+            <p id="modal-message" class="text-lg text-slate-200 mb-6">Message goes here.</p>
+            <div id="modal-score-details" class="bg-slate-900 p-4 rounded-lg mb-6 text-left hidden font-mono text-sm h-32 overflow-y-auto"></div>
+            <button id="modal-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full shadow-lg w-full transition-colors text-lg">
+                Continue
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const Suits = { HEARTS: 'hearts', DIAMONDS: 'diamonds', CLUBS: 'clubs', SPADES: 'spades' };
+        const Values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        const SuitSymbols = { hearts: '♥', diamonds: '♦', clubs: '♣', spades: '♠' };
+        const TargetScore = 121;
+        const Phases = { SETUP: 'Setup', DEAL: 'Dealing', DISCARD: 'Discard', PEGGING: 'Pegging', COUNTING: 'Counting', CRIB_COUNT: 'Crib', GAME_OVER: 'Game Over' };
+
+        // Utility to generate readable random IDs for rooms
+        const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        class Card {
+            constructor(suit, value) {
+                this.suit = suit;
+                this.value = value;
+                this.isHidden = false;
+                this.id = `${value}-${suit}`;
+            }
+
+            get rank() { return Values.indexOf(this.value) + 1; }
+            get cribValue() {
+                if (['J', 'Q', 'K'].includes(this.value)) return 10;
+                if (this.value === 'A') return 1;
+                return parseInt(this.value);
+            }
+            get colorClass() { return (this.suit === Suits.HEARTS || this.suit === Suits.DIAMONDS) ? 'suit-hearts' : 'suit-clubs'; }
+
+            createHTML(onClickCallback = null, isSelected = false) {
+                const el = document.createElement('div');
+                el.className = `playing-card animate-deal ${this.isHidden ? 'hidden-card' : ''} ${isSelected ? 'selected' : ''}`;
+                el.dataset.id = this.id;
+                
+                if (!this.isHidden) {
+                    const symbol = SuitSymbols[this.suit];
+                    el.innerHTML = `
+                        <div class="card-value ${this.colorClass}">${this.value}</div>
+                        <div class="card-suit ${this.colorClass}">${symbol}</div>
+                        <div class="card-value bottom-val ${this.colorClass}">${this.value}</div>
+                    `;
+                }
+                if (onClickCallback) {
+                    el.addEventListener('click', () => onClickCallback(this, el));
+                }
+                return el;
+            }
+            
+            // Factory to reconstruct from network payload
+            static fromId(id) {
+                const [val, suit] = id.split('-');
+                return new Card(suit, val);
+            }
+        }
+
+        class Deck {
+            constructor() {
+                this.cards = [];
+                this.build();
+            }
+            build() {
+                this.cards = [];
+                for (let suit of Object.values(Suits)) {
+                    for (let value of Values) {
+                        this.cards.push(new Card(suit, value));
+                    }
+                }
+            }
+            shuffle() {
+                for (let i = this.cards.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
+                }
+            }
+            deal(num) { return this.cards.splice(0, num); }
+        }
+
+        class CribbageGame {
+            constructor() {
+                // Game State
+                this.scores = { local: 0, remote: 0 };
+                this.dealer = 'local'; // 'local' or 'remote'
+                this.phase = Phases.SETUP;
+                
+                this.deck = new Deck();
+                this.localHand = [];
+                this.remoteHand = [];
+                this.crib = [];
+                this.starterCard = null;
+                
+                this.peggingCards = [];
+                this.pegCount = 0;
+                this.currentTurn = 'local';
+                this.unplayedLocal = [];
+                this.unplayedRemote = [];
+                this.goStated = { local: false, remote: false };
+                
+                this.selectedDiscards = [];
+                
+                // Network / Mode state
+                this.isMultiplayer = false;
+                this.isHost = true; // AI defaults to host logic
+                this.peer = null;
+                this.conn = null;
+                
+                // Sync states
+                this.remoteDiscardsRecv = null; // array of cards
+                this.localReadyNext = false;
+                this.remoteReadyNext = false;
+
+                // Bind UI elements
+                this.bindUI();
+                this.buildBoard();
+                this.setupLobby();
+            }
+
+            bindUI() {
+                this.els = {
+                    localScore: document.getElementById('player-score'),
+                    remoteScore: document.getElementById('computer-score'),
+                    progLocal: document.getElementById('progress-player'),
+                    progRemote: document.getElementById('progress-computer'),
+                    trackLocal: document.getElementById('track-player'),
+                    trackRemote: document.getElementById('track-computer'),
+                    winHole: document.getElementById('win-hole'),
+                    phaseText: document.getElementById('game-phase-text'),
+                    localHand: document.getElementById('player-hand'),
+                    remoteHand: document.getElementById('computer-hand'),
+                    cribZone: document.getElementById('crib-zone'),
+                    peggingZone: document.getElementById('pegging-zone'),
+                    starterZone: document.getElementById('starter-card-zone'),
+                    actionBtn: document.getElementById('action-btn'),
+                    goBtn: document.getElementById('go-btn'),
+                    nextPhaseBtn: document.getElementById('next-phase-btn'),
+                    waitingText: document.getElementById('waiting-text'),
+                    log: document.getElementById('game-log'),
+                    pegCount: document.getElementById('peg-count-display'),
+                    whoseTurn: document.getElementById('whose-turn'),
+                    currentDealer: document.getElementById('current-dealer'),
+                    cribOwner: document.getElementById('crib-owner'),
+                    cribPlaceholder: document.getElementById('crib-placeholder'),
+                    peggingPlaceholder: document.getElementById('pegging-placeholder'),
+                    lobby: document.getElementById('lobby-screen'),
+                    status: document.getElementById('connection-status'),
+                    netIndicator: document.getElementById('network-indicator'),
+                    oppNameTag: document.getElementById('opponent-name-tag'),
+                    oppHandLabel: document.getElementById('opponent-hand-label'),
+                    p2TrackLabel: document.getElementById('p2-track-label')
+                };
+                
+                this.pegs = {
+                    local: { front: null, back: null },
+                    remote: { front: null, back: null }
+                };
+            }
+
+            setupLobby() {
+                document.getElementById('btn-play-ai').onclick = () => {
+                    this.isMultiplayer = false;
+                    this.els.lobby.classList.add('hidden');
+                    this.initGame();
+                };
+
+                document.getElementById('btn-host').onclick = () => {
+                    this.isMultiplayer = true;
+                    this.isHost = true;
+                    document.getElementById('host-info').classList.remove('hidden');
+                    this.setStatus('Initializing server...');
+                    this.setupPeer(generateRoomId());
+                };
+
+                document.getElementById('btn-join').onclick = () => {
+                    const id = document.getElementById('join-id-input').value.trim().toUpperCase();
+                    if (!id) return;
+                    this.isMultiplayer = true;
+                    this.isHost = false;
+                    this.setStatus(`Connecting to ${id}...`);
+                    this.setupPeer(null, id);
+                };
+            }
+
+            setupPeer(hostId = null, targetId = null) {
+                // Initialize PeerJS
+                if (hostId) {
+                    this.peer = new Peer(hostId);
+                } else {
+                    this.peer = new Peer();
+                }
+
+                this.peer.on('open', (id) => {
+                    if (this.isHost) {
+                        document.getElementById('room-id-display').textContent = id;
+                        this.setStatus('Waiting for opponent to connect...');
+                    } else if (targetId) {
+                        this.connectToPeer(targetId);
+                    }
+                });
+
+                this.peer.on('connection', (conn) => {
+                    if (this.isHost) {
+                        this.conn = conn;
+                        this.setupConnectionHandlers();
+                    }
+                });
+
+                this.peer.on('error', (err) => {
+                    this.setStatus(`Error: ${err.message}`);
+                    console.error(err);
+                });
+            }
+
+            connectToPeer(targetId) {
+                this.conn = this.peer.connect(targetId, { reliable: true });
+                this.setupConnectionHandlers();
+            }
+
+            setupConnectionHandlers() {
+                this.conn.on('open', () => {
+                    this.setStatus('Connected!');
+                    setTimeout(() => {
+                        this.els.lobby.classList.add('hidden');
+                        this.els.netIndicator.classList.remove('hidden');
+                        
+                        // Update UI names for multiplayer
+                        this.els.oppNameTag.textContent = 'Player 2';
+                        this.els.oppHandLabel.textContent = "Opponent's Hand";
+                        this.els.p2TrackLabel.textContent = 'P2';
+                        this.els.remoteScore.classList.add('text-emerald-400'); // distinct color
+
+                        if (this.isHost) {
+                            // Host initiates game loop
+                            this.initGame();
+                            this.sendNetMessage('GAME_START', { dealer: 'remote' }); // We'll map dealer on sync
+                        }
+                    }, 1000);
+                });
+
+                this.conn.on('data', (data) => {
+                    this.handleNetMessage(data);
+                });
+
+                this.conn.on('close', () => {
+                    this.log("Opponent disconnected.", 'error');
+                    alert("Opponent disconnected. Refresh to play again.");
+                });
+            }
+
+            sendNetMessage(type, payload = {}) {
+                if (!this.conn || !this.conn.open) return;
+                this.conn.send({ type, payload });
+            }
+
+            handleNetMessage(msg) {
+                const { type, payload } = msg;
+                
+                switch(type) {
+                    case 'GAME_START':
+                        // Only client receives this
+                        this.initGame();
+                        break;
+
+                    case 'DEAL':
+                        // Only client receives hands from host
+                        this.deck.cards = payload.deckState.map(Card.fromId);
+                        this.localHand = payload.clientHand.map(Card.fromId);
+                        this.remoteHand = payload.hostHand.map(Card.fromId);
+                        this.dealer = payload.isClientDealer ? 'local' : 'remote';
+                        this.beginDiscardPhase();
+                        break;
+
+                    case 'DISCARDS':
+                        // Opponent locked in discards
+                        this.remoteDiscardsRecv = payload.cards.map(Card.fromId);
+                        this.checkDiscardsReady();
+                        break;
+
+                    case 'CUT_CARD':
+                        // Only client receives cut card from host
+                        this.starterCard = Card.fromId(payload.card);
+                        this.revealCutAndStartPegging();
+                        break;
+
+                    case 'PLAY_CARD':
+                        // Opponent played a pegging card
+                        const card = this.unplayedRemote.find(c => c.id === payload.cardId);
+                        if (card) {
+                            this.executePeggingPlay('remote', card);
+                        }
+                        break;
+
+                    case 'SAY_GO':
+                        this.executeGo('remote');
+                        break;
+
+                    case 'NEXT_PHASE':
+                        this.remoteReadyNext = true;
+                        this.checkNextPhaseReady();
+                        break;
+                }
+            }
+
+            setStatus(msg) {
+                this.els.status.textContent = msg;
+            }
+
+            buildBoard() {
+                if (!this.els.trackLocal) return;
+                const buildTrack = (containerId) => {
+                    const container = this.els[containerId];
+                    container.innerHTML = '';
+                    for (let i = 0; i < 24; i++) {
+                        const group = document.createElement('div');
+                        group.className = 'track-group flex-shrink-0';
+                        for (let j = 0; j < 5; j++) {
+                            const hole = document.createElement('div');
+                            hole.className = 'board-hole';
+                            hole.dataset.point = (i * 5) + j + 1;
+                            group.appendChild(hole);
+                        }
+                        container.appendChild(group);
+                    }
+                };
+                buildTrack('trackLocal');
+                buildTrack('trackRemote');
+                
+                ['local', 'remote'].forEach(p => {
+                    ['front', 'back'].forEach(t => {
+                        const peg = document.createElement('div');
+                        peg.className = `board-peg ${p === 'local' ? 'player' : 'computer'}`;
+                        peg.style.display = 'none';
+                        this.pegs[p][t] = { el: peg, pos: 0 };
+                    });
+                });
+            }
+
+            log(message, type = 'normal') {
+                const p = document.createElement('div');
+                p.textContent = message;
+                if (type === 'score') p.className = 'text-green-400 font-bold';
+                else if (type === 'alert') p.className = 'text-yellow-400';
+                else if (type === 'error') p.className = 'text-red-400';
+                else p.className = 'text-slate-300';
+                this.els.log.appendChild(p);
+                this.els.log.scrollTop = this.els.log.scrollHeight;
+            }
+
+            updateScore(player, amount, reason) {
+                if (amount <= 0) return false;
+                
+                const oldScore = this.scores[player];
+                this.scores[player] += amount;
+                if (this.scores[player] > TargetScore) this.scores[player] = TargetScore;
+                
+                this.els[`${player}Score`].textContent = this.scores[player];
+                
+                const percent = (this.scores[player] / TargetScore) * 100;
+                const pName = player.charAt(0).toUpperCase() + player.slice(1);
+                if (this.els[`prog${pName}`]) this.els[`prog${pName}`].style.width = `${percent}%`;
+                
+                this.movePeg(player, oldScore, this.scores[player]);
+                
+                const name = player === 'local' ? 'You' : (this.isMultiplayer ? 'Opponent' : 'Computer');
+                this.log(`${name} scored ${amount} for ${reason}`, 'score');
+
+                if (this.scores[player] >= TargetScore) {
+                    this.gameOver(player);
+                    return true;
+                }
+                return false;
+            }
+
+            movePeg(player, oldPos, newPos) {
+                if (!this.els.trackLocal || newPos === 0) return;
+                const trackId = player === 'local' ? 'trackLocal' : 'trackRemote';
+                const container = this.els[trackId];
+                
+                let pegToMove;
+                if (oldPos === 0) {
+                     pegToMove = this.pegs[player].front;
+                     pegToMove.el.style.display = 'block';
+                } else if (oldPos === this.pegs[player].front.pos) {
+                     pegToMove = this.pegs[player].back;
+                     pegToMove.el.style.display = 'block';
+                     const temp = this.pegs[player].front;
+                     this.pegs[player].front = this.pegs[player].back;
+                     this.pegs[player].back = temp;
+                } else {
+                     pegToMove = this.pegs[player].front;
+                }
+                
+                pegToMove.pos = newPos;
+                let targetHole = (newPos >= TargetScore) ? this.els.winHole : container.querySelectorAll('.board-hole')[newPos - 1];
+
+                if (targetHole) {
+                     targetHole.appendChild(pegToMove.el);
+                     pegToMove.el.style.transform = 'scale(1.3) translateY(-10px)';
+                     setTimeout(() => pegToMove.el.style.transform = 'scale(1) translateY(0)', 300);
+                }
+            }
+
+            setPhase(phase) {
+                this.phase = phase;
+                this.els.phaseText.textContent = `Phase: ${phase}`;
+            }
+
+            initGame() {
+                this.log(this.isMultiplayer ? "Multiplayer game started!" : "Welcome to Cribbage vs AI!");
+                // First round, Host (or Local vs AI) is dealer
+                this.dealer = 'local';
+                this.startRound();
+            }
+
+            startRound() {
+                this.remoteDiscardsRecv = null;
+                this.localReadyNext = false;
+                this.remoteReadyNext = false;
+                this.crib = [];
+                this.starterCard = null;
+                this.peggingCards = [];
+                this.pegCount = 0;
+                this.selectedDiscards = [];
+                
+                this.els.cribZone.innerHTML = '';
+                this.els.peggingZone.innerHTML = '';
+                this.els.starterZone.innerHTML = '';
+                this.els.pegCount.textContent = '0';
+
+                // Host handles dealing
+                if (!this.isMultiplayer || this.isHost) {
+                    this.deck.build();
+                    this.deck.shuffle();
+                    this.localHand = this.deck.deal(6);
+                    this.remoteHand = this.deck.deal(6);
+
+                    if (this.isMultiplayer) {
+                        // Send deal info. If host is dealer, client is NOT.
+                        this.sendNetMessage('DEAL', {
+                            hostHand: this.localHand.map(c => c.id),
+                            clientHand: this.remoteHand.map(c => c.id),
+                            deckState: this.deck.cards.map(c => c.id),
+                            isClientDealer: this.dealer === 'remote'
+                        });
+                    }
+                    this.beginDiscardPhase();
+                }
+            }
+
+            beginDiscardPhase() {
+                this.setPhase(Phases.DISCARD);
+                
+                let dlrName = this.dealer === 'local' ? 'You' : (this.isMultiplayer ? 'Opponent' : 'Computer');
+                this.els.currentDealer.textContent = dlrName;
+                this.els.currentDealer.className = this.dealer === 'local' ? 'text-blue-400 font-bold' : 'text-red-400 font-bold';
+                this.els.cribOwner.textContent = `(${this.dealer === 'local' ? 'Yours' : dlrName + "'s"})`;
+                
+                this.renderHands();
+                
+                this.els.cribPlaceholder.style.display = 'block';
+                this.els.cribPlaceholder.textContent = "Select 2 cards to discard to the crib.";
+                this.els.cribZone.appendChild(this.els.cribPlaceholder);
+                
+                this.els.peggingPlaceholder.style.display = 'block';
+                this.els.peggingZone.appendChild(this.els.peggingPlaceholder);
+
+                this.els.actionBtn.textContent = "Confirm Discard";
+                this.els.actionBtn.onclick = () => this.confirmDiscard();
+                this.els.actionBtn.classList.add('hidden');
+                this.els.goBtn.classList.add('hidden');
+                this.els.nextPhaseBtn.classList.add('hidden');
+                this.els.waitingText.classList.add('hidden');
+                
+                this.els.localHand.classList.add('highlight-zone');
+
+                // If playing AI, pre-calculate AI discards
+                if (!this.isMultiplayer) {
+                    let compHandCopy = [...this.remoteHand].sort((a,b) => a.cribValue - b.cribValue);
+                    if(this.dealer === 'remote') {
+                        this.remoteDiscardsRecv = [compHandCopy[compHandCopy.length-1], compHandCopy[compHandCopy.length-2]];
+                    } else {
+                        this.remoteDiscardsRecv = [compHandCopy[0], compHandCopy[1]];
+                    }
+                }
+            }
+
+            renderHands() {
+                this.els.localHand.innerHTML = '';
+                this.localHand.forEach(card => {
+                    const isSelected = this.selectedDiscards.some(c => c.id === card.id);
+                    const el = card.createHTML((c, elem) => this.handleCardClick(c, elem), isSelected);
+                    this.els.localHand.appendChild(el);
+                });
+
+                this.els.remoteHand.innerHTML = '';
+                this.remoteHand.forEach(card => {
+                    const renderCard = new Card(card.suit, card.value);
+                    if (this.phase === Phases.DISCARD || this.phase === Phases.PEGGING) {
+                        renderCard.isHidden = true;
+                    }
+                    this.els.remoteHand.appendChild(renderCard.createHTML());
+                });
+            }
+
+            handleCardClick(card, element) {
+                if (this.phase === Phases.DISCARD) {
+                    const index = this.selectedDiscards.findIndex(c => c.id === card.id);
+                    if (index > -1) {
+                        this.selectedDiscards.splice(index, 1);
+                        element.classList.remove('selected');
+                    } else if (this.selectedDiscards.length < 2) {
+                        this.selectedDiscards.push(card);
+                        element.classList.add('selected');
+                    }
+                    
+                    if (this.selectedDiscards.length === 2) this.els.actionBtn.classList.remove('hidden');
+                    else this.els.actionBtn.classList.add('hidden');
+                } else if (this.phase === Phases.PEGGING && this.currentTurn === 'local') {
+                    if (this.pegCount + card.cribValue <= 31) {
+                        this.playCardAction(card);
+                    } else {
+                        this.log("Too high! Keep count <= 31 or say Go.", 'error');
+                    }
+                }
+            }
+
+            confirmDiscard() {
+                if (this.selectedDiscards.length !== 2) return;
+
+                // Move local discards
+                this.selectedDiscards.forEach(card => {
+                    this.localHand = this.localHand.filter(c => c.id !== card.id);
+                    this.crib.push(card);
+                });
+
+                this.els.localHand.classList.remove('highlight-zone');
+                this.els.actionBtn.classList.add('hidden');
+
+                if (this.isMultiplayer) {
+                    this.sendNetMessage('DISCARDS', { cards: this.selectedDiscards.map(c => c.id) });
+                    this.els.waitingText.classList.remove('hidden');
+                }
+                
+                this.renderHands();
+                this.checkDiscardsReady();
+            }
+
+            checkDiscardsReady() {
+                // Wait for both local (length == 4) and remote discards received
+                if (this.localHand.length === 4 && this.remoteDiscardsRecv) {
+                    this.els.waitingText.classList.add('hidden');
+                    
+                    // Merge remote discards
+                    this.remoteDiscardsRecv.forEach(card => {
+                        this.remoteHand = this.remoteHand.filter(c => c.id !== card.id);
+                        this.crib.push(card);
+                    });
+                    
+                    // Render Crib visually face down
+                    this.els.cribPlaceholder.style.display = 'none';
+                    this.els.cribZone.innerHTML = '';
+                    this.crib.forEach((c, i) => {
+                        const hiddenCard = new Card('hearts', 'A'); hiddenCard.isHidden = true;
+                        const el = hiddenCard.createHTML();
+                        el.style.position = i > 0 ? 'absolute' : 'relative';
+                        if(i>0) { el.style.marginLeft = `${i*10}px`; el.style.marginTop = `${i*5}px`; }
+                        this.els.cribZone.appendChild(el);
+                    });
+
+                    // Host cuts deck
+                    if (!this.isMultiplayer || this.isHost) {
+                        this.starterCard = this.deck.deal(1)[0];
+                        if (this.isMultiplayer) {
+                            this.sendNetMessage('CUT_CARD', { card: this.starterCard.id });
+                        }
+                        this.revealCutAndStartPegging();
+                    }
+                }
+            }
+
+            revealCutAndStartPegging() {
+                const el = this.starterCard.createHTML();
+                el.classList.remove('animate-deal');
+                this.els.starterZone.innerHTML = '';
+                this.els.starterZone.appendChild(el);
+                this.log(`Starter cut: ${this.starterCard.value} of ${this.starterCard.suit}`);
+
+                if (this.starterCard.value === 'J') {
+                    if(this.updateScore(this.dealer, 2, "His Heels")) return;
+                }
+                this.startPegging();
+            }
+
+            startPegging() {
+                this.setPhase(Phases.PEGGING);
+                this.unplayedLocal = [...this.localHand];
+                this.unplayedRemote = [...this.remoteHand];
+                this.peggingCards = [];
+                this.pegCount = 0;
+                this.goStated = { local: false, remote: false };
+                this.els.peggingPlaceholder.style.display = 'none';
+                this.els.peggingZone.innerHTML = '';
+                
+                // Non-dealer starts
+                this.currentTurn = this.dealer === 'local' ? 'remote' : 'local';
+                this.updatePeggingUI();
+                this.renderPeggingHands();
+
+                if (this.currentTurn === 'remote' && !this.isMultiplayer) {
+                    setTimeout(() => this.aiPegTurn(), 800);
+                }
+            }
+
+            renderPeggingHands() {
+                this.els.localHand.innerHTML = '';
+                this.localHand.forEach(card => {
+                    const isUnplayed = this.unplayedLocal.some(c => c.id === card.id);
+                    const el = card.createHTML((c, elem) => isUnplayed ? this.handleCardClick(c, elem) : null);
+                    if (!isUnplayed) el.classList.add('disabled');
+                    else if (this.currentTurn === 'local' && this.pegCount + card.cribValue > 31) el.classList.add('disabled');
+                    this.els.localHand.appendChild(el);
+                });
+                
+                this.els.remoteHand.innerHTML = '';
+                this.remoteHand.forEach(card => {
+                    const isUnplayed = this.unplayedRemote.some(c => c.id === card.id);
+                    const renderCard = new Card(card.suit, card.value);
+                    renderCard.isHidden = isUnplayed; // keep unplayed hidden
+                    const el = renderCard.createHTML();
+                    if (!isUnplayed) el.classList.add('disabled');
+                    this.els.remoteHand.appendChild(el);
+                });
+            }
+
+            updatePeggingUI() {
+                this.els.pegCount.textContent = this.pegCount;
+                
+                let turnName = this.currentTurn === 'local' ? 'Your Turn' : (this.isMultiplayer ? 'Opponent Turn' : 'Computer Turn');
+                this.els.whoseTurn.textContent = turnName;
+                this.els.whoseTurn.className = this.currentTurn === 'local' ? 'text-blue-300 font-bold' : 'text-red-300 font-bold';
+                
+                if (this.currentTurn === 'local') {
+                    this.els.peggingZone.classList.add('highlight-zone');
+                    const canPlay = this.unplayedLocal.some(c => this.pegCount + c.cribValue <= 31);
+                    if (!canPlay && this.unplayedLocal.length > 0) {
+                        this.els.goBtn.classList.remove('hidden');
+                        this.els.goBtn.onclick = () => this.sayGoAction();
+                    } else {
+                        this.els.goBtn.classList.add('hidden');
+                    }
+                } else {
+                    this.els.peggingZone.classList.remove('highlight-zone');
+                    this.els.goBtn.classList.add('hidden');
+                }
+            }
+
+            playCardAction(card) {
+                // Local player action
+                if (this.isMultiplayer) this.sendNetMessage('PLAY_CARD', { cardId: card.id });
+                this.executePeggingPlay('local', card);
+            }
+
+            sayGoAction() {
+                // Local player action
+                this.els.goBtn.classList.add('hidden');
+                if (this.isMultiplayer) this.sendNetMessage('SAY_GO');
+                this.executeGo('local');
+            }
+
+            executePeggingPlay(player, card) {
+                if (player === 'local') this.unplayedLocal = this.unplayedLocal.filter(c => c.id !== card.id);
+                else this.unplayedRemote = this.unplayedRemote.filter(c => c.id !== card.id);
+
+                this.peggingCards.push(card);
+                this.pegCount += card.cribValue;
+                
+                const el = card.createHTML();
+                el.style.transform = `rotate(${(Math.random() - 0.5) * 15}deg)`; 
+                this.els.peggingZone.appendChild(el);
+                
+                const pName = player === 'local' ? 'You' : (this.isMultiplayer ? 'Opponent' : 'Computer');
+                this.log(`${pName} played ${card.value} (Count: ${this.pegCount})`);
+                
+                const pts = this.calculatePeggingPoints();
+                if(pts > 0) { if(this.updateScore(player, pts, "Pegging")) return; }
+
+                this.renderPeggingHands();
+
+                if (this.pegCount === 31) {
+                    this.log("Count is 31! Resetting.", 'alert');
+                    this.resetPegging(player);
+                } else if (this.unplayedLocal.length === 0 && this.unplayedRemote.length === 0) {
+                    if(this.updateScore(player, 1, "Last Card")) return;
+                    this.endPegging();
+                } else {
+                    this.switchTurn();
+                }
+            }
+
+            executeGo(player) {
+                const pName = player === 'local' ? 'You' : (this.isMultiplayer ? 'Opponent' : 'Computer');
+                this.log(`${pName} says 'Go'.`);
+                this.goStated[player] = true;
+                
+                const other = player === 'local' ? 'remote' : 'local';
+                
+                if (this.goStated.local && this.goStated.remote) {
+                    this.log("Both said 'Go'. Resetting count.", 'alert');
+                    if(this.updateScore(other, 1, "Go")) return; // Point to last player to play
+                    this.resetPegging();
+                } else {
+                    this.switchTurn();
+                }
+            }
+
+            switchTurn() {
+                this.currentTurn = this.currentTurn === 'local' ? 'remote' : 'local';
+                
+                if (this.goStated[this.currentTurn]) {
+                    this.switchTurn(); // skip turn if they already said go
+                    return;
+                }
+                
+                this.updatePeggingUI();
+                this.renderPeggingHands();
+                
+                if (this.currentTurn === 'remote' && !this.isMultiplayer) {
+                    setTimeout(() => this.aiPegTurn(), 800);
+                }
+            }
+
+            resetPegging() {
+                 this.peggingCards = [];
+                 this.pegCount = 0;
+                 this.goStated = { local: false, remote: false };
+                 
+                 const oldCards = Array.from(this.els.peggingZone.children);
+                 oldCards.forEach(c => { c.style.opacity = '0.5'; c.style.transform = 'scale(0.8)'; });
+                 if (oldCards.length > 0) {
+                     const sep = document.createElement('div');
+                     sep.className = 'w-1 h-12 bg-slate-500 mx-2 rounded';
+                     this.els.peggingZone.appendChild(sep);
+                 }
+                 this.switchTurn();
+            }
+
+            endPegging() {
+                this.log("Pegging complete.");
+                this.els.peggingZone.classList.remove('highlight-zone');
+                this.els.whoseTurn.textContent = "Phase Complete";
+                this.els.whoseTurn.className = "text-slate-400";
+                
+                this.els.nextPhaseBtn.classList.remove('hidden');
+                this.els.nextPhaseBtn.textContent = "Score Hands";
+                this.els.nextPhaseBtn.onclick = () => this.readyNextPhase();
+            }
+
+            aiPegTurn() {
+                if (this.phase !== Phases.PEGGING) return;
+                const playable = this.unplayedRemote.filter(c => this.pegCount + c.cribValue <= 31);
+                
+                if (playable.length === 0) {
+                    if (this.unplayedRemote.length > 0) this.executeGo('remote');
+                    return;
+                }
+
+                let cardToPlay = playable.find(c => this.pegCount + c.cribValue === 15 || this.pegCount + c.cribValue === 31);
+                if (!cardToPlay && this.peggingCards.length > 0) {
+                    const last = this.peggingCards[this.peggingCards.length - 1];
+                    cardToPlay = playable.find(c => c.value === last.value);
+                }
+                if (!cardToPlay) cardToPlay = playable.sort((a,b) => b.cribValue - a.cribValue)[0];
+
+                this.executePeggingPlay('remote', cardToPlay);
+            }
+
+            calculatePeggingPoints() {
+                let pts = 0;
+                const len = this.peggingCards.length;
+                if (len === 0) return 0;
+                const last = this.peggingCards[len-1];
+
+                if (this.pegCount === 15) { pts += 2; this.log("15 for 2!", "score"); }
+                if (this.pegCount === 31) { pts += 2; this.log("31 for 2!", "score"); }
+
+                if (len >= 2 && this.peggingCards[len-2].value === last.value) {
+                    if (len >= 3 && this.peggingCards[len-3].value === last.value) {
+                        if (len >= 4 && this.peggingCards[len-4].value === last.value) {
+                            pts += 12; this.log("Double Pair Royal for 12!", "score");
+                        } else { pts += 6; this.log("Pair Royal for 6!", "score"); }
+                    } else { pts += 2; this.log("Pair for 2!", "score"); }
+                }
+
+                if (len >= 3) {
+                    for (let runLen = len; runLen >= 3; runLen--) {
+                        const subset = this.peggingCards.slice(len - runLen);
+                        const ranks = subset.map(c => c.rank).sort((a,b) => a-b);
+                        let isRun = true;
+                        for(let i=1; i<ranks.length; i++) { if(ranks[i] !== ranks[i-1] + 1) { isRun = false; break; } }
+                        if (isRun) { pts += runLen; this.log(`Run of ${runLen}!`, "score"); break; }
+                    }
+                }
+                return pts;
+            }
+
+            readyNextPhase() {
+                this.els.nextPhaseBtn.classList.add('hidden');
+                this.localReadyNext = true;
+                
+                if (this.isMultiplayer) {
+                    this.sendNetMessage('NEXT_PHASE');
+                    this.els.waitingText.classList.remove('hidden');
+                } else {
+                    this.remoteReadyNext = true; // AI is always ready
+                }
+                this.checkNextPhaseReady();
+            }
+
+            checkNextPhaseReady() {
+                if (this.localReadyNext && this.remoteReadyNext) {
+                    this.localReadyNext = false;
+                    this.remoteReadyNext = false;
+                    this.els.waitingText.classList.add('hidden');
+                    
+                    if (this.phase === Phases.PEGGING) {
+                        this.startCounting();
+                    } else if (this.phase === Phases.COUNTING || this.phase === Phases.CRIB_COUNT) {
+                        // handled inside counting queue logic
+                        this.processNextCount();
+                    } else if (this.phase === Phases.GAME_OVER) {
+                        // restarting is handled directly
+                    } else {
+                        // Means end of round
+                        this.completeRound();
+                    }
+                }
+            }
+
+            startCounting() {
+                this.setPhase(Phases.COUNTING);
+                this.els.peggingZone.innerHTML = '';
+                this.els.peggingPlaceholder.style.display = 'block';
+                this.els.peggingPlaceholder.textContent = "Counting Hands...";
+                
+                this.els.remoteHand.innerHTML = '';
+                this.remoteHand.forEach(card => this.els.remoteHand.appendChild(card.createHTML()));
+
+                // Non-dealer counts first, then dealer, then dealer's crib
+                this.countQueue = [];
+                if (this.dealer === 'local') {
+                    this.countQueue.push({ player: 'remote', type: 'hand', cards: this.remoteHand });
+                    this.countQueue.push({ player: 'local', type: 'hand', cards: this.localHand });
+                    this.countQueue.push({ player: 'local', type: 'crib', cards: this.crib });
+                } else {
+                    this.countQueue.push({ player: 'local', type: 'hand', cards: this.localHand });
+                    this.countQueue.push({ player: 'remote', type: 'hand', cards: this.remoteHand });
+                    this.countQueue.push({ player: 'remote', type: 'crib', cards: this.crib });
+                }
+
+                // Auto start processing
+                this.localReadyNext = true; this.remoteReadyNext = true; 
+                this.processNextCount();
+            }
+            
+            processNextCount() {
+                if (this.countQueue.length === 0) {
+                    this.els.nextPhaseBtn.classList.remove('hidden');
+                    this.els.nextPhaseBtn.textContent = "Start Next Round";
+                    this.els.nextPhaseBtn.onclick = () => {
+                        this.phase = Phases.SETUP; // dummy phase to trigger completeRound
+                        this.readyNextPhase();
+                    };
+                    return;
+                }
+                
+                const job = this.countQueue.shift();
+                
+                if (job.type === 'crib') {
+                    this.setPhase(Phases.CRIB_COUNT);
+                    this.els.cribZone.innerHTML = '';
+                    job.cards.forEach(card => this.els.cribZone.appendChild(card.createHTML()));
+                }
+                
+                const scoreDetails = this.scoreHand(job.cards, this.starterCard, job.type === 'crib');
+                
+                this.showScoreModal(job.player, job.type, scoreDetails, () => {
+                    if(this.updateScore(job.player, scoreDetails.total, `${job.type} count`)) return;
+                    
+                    // Proceed automatically to next count
+                    setTimeout(() => {
+                        this.localReadyNext = true; this.remoteReadyNext = true;
+                        this.checkNextPhaseReady();
+                    }, 500);
+                });
+            }
+
+            scoreHand(hand, starter, isCrib) {
+                const cards = [...hand, starter];
+                let total = 0; let details = [];
+
+                // 15s
+                const find15s = (arr, target, partial) => {
+                    let sum = partial.reduce((acc, val) => acc + val.cribValue, 0);
+                    if (sum === target) { total += 2; details.push(`15 (${partial.map(c=>c.value).join(',')}) : 2`); return; }
+                    if (sum >= target) return;
+                    for (let i = 0; i < arr.length; i++) find15s(arr.slice(i + 1), target, partial.concat([arr[i]]));
+                };
+                find15s(cards, 15, []);
+
+                // Pairs
+                for (let i=0; i<cards.length; i++) {
+                    for (let j=i+1; j<cards.length; j++) {
+                        if (cards[i].value === cards[j].value) { total += 2; details.push(`Pair (${cards[i].value}) : 2`); }
+                    }
+                }
+
+                // Runs
+                let ranks = cards.map(c => c.rank).sort((a,b) => a-b);
+                let uniqueRanks = [...new Set(ranks)];
+                let maxRunLength = 0; let currentRun = 1;
+                
+                for (let i = 1; i < uniqueRanks.length; i++) {
+                    if (uniqueRanks[i] === uniqueRanks[i-1] + 1) currentRun++;
+                    else { if (currentRun >= 3) maxRunLength = Math.max(maxRunLength, currentRun); currentRun = 1; }
+                }
+                if (currentRun >= 3) maxRunLength = Math.max(maxRunLength, currentRun);
+
+                if (maxRunLength >= 3) {
+                    let multiplier = 1;
+                    let runRanks = []; currentRun = 1; let tempRanks = [uniqueRanks[0]];
+                    for(let i=1; i<uniqueRanks.length; i++) {
+                         if (uniqueRanks[i] === uniqueRanks[i-1] + 1) { currentRun++; tempRanks.push(uniqueRanks[i]); } 
+                         else { if(currentRun === maxRunLength) runRanks = tempRanks; currentRun = 1; tempRanks = [uniqueRanks[i]]; }
+                    }
+                    if(currentRun === maxRunLength) runRanks = tempRanks;
+
+                    runRanks.forEach(r => { multiplier *= ranks.filter(rank => rank === r).length; });
+                    const runPoints = maxRunLength * multiplier;
+                    total += runPoints;
+                    details.push(`Run of ${maxRunLength} (x${multiplier}) : ${runPoints}`);
+                }
+
+                // Flushes
+                const handSuit = hand[0].suit;
+                const isHandFlush = hand.every(c => c.suit === handSuit);
+                if (isHandFlush && !isCrib) {
+                    if (starter.suit === handSuit) { total += 5; details.push(`Flush (5) : 5`); } 
+                    else { total += 4; details.push(`Flush (4) : 4`); }
+                } else if (isCrib && isHandFlush && starter.suit === handSuit) {
+                    total += 5; details.push(`Flush (5) : 5`);
+                }
+
+                // Nobs
+                const jack = hand.find(c => c.value === 'J' && c.suit === starter.suit);
+                if (jack) { total += 1; details.push(`His Nobs : 1`); }
+                if(total === 0) details.push("Nothing : 0");
+
+                return { total, details };
+            }
+
+            showScoreModal(player, type, scoreInfo, callback) {
+                const modal = document.getElementById('message-modal');
+                const content = document.getElementById('modal-content');
+                
+                let titleText = player === 'local' ? 'Your ' : (this.isMultiplayer ? 'Opponent\'s ' : 'Computer\'s ');
+                titleText += type === 'crib' ? 'Crib' : 'Hand';
+                
+                document.getElementById('modal-title').textContent = titleText;
+                document.getElementById('modal-title').className = player === 'local' ? 'text-3xl font-bold mb-4 text-blue-400 font-cinzel' : 'text-3xl font-bold mb-4 text-red-400 font-cinzel';
+                
+                document.getElementById('modal-message').innerHTML = `Scores <span class="text-3xl font-bold text-yellow-400">${scoreInfo.total}</span> points.`;
+                
+                const detailsDiv = document.getElementById('modal-score-details');
+                detailsDiv.innerHTML = scoreInfo.details.map(d => `<div>${d}</div>`).join('');
+                detailsDiv.classList.remove('hidden');
+
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                }, 10);
+
+                document.getElementById('modal-btn').onclick = () => {
+                    content.classList.remove('scale-100', 'opacity-100');
+                    content.classList.add('scale-95', 'opacity-0');
+                    setTimeout(() => {
+                        modal.classList.add('hidden');
+                        detailsDiv.classList.add('hidden');
+                        if(callback) callback();
+                    }, 200);
+                };
+            }
+
+            completeRound() {
+                this.log("Round complete. Switching dealer.");
+                this.dealer = this.dealer === 'local' ? 'remote' : 'local';
+                this.startRound();
+            }
+
+            gameOver(winner) {
+                this.setPhase(Phases.GAME_OVER);
+                const wName = winner === 'local' ? 'You' : (this.isMultiplayer ? 'Opponent' : 'Computer');
+                this.log(`Game Over! ${wName} wins!`, 'alert');
+                
+                const modal = document.getElementById('message-modal');
+                const content = document.getElementById('modal-content');
+                document.getElementById('modal-title').textContent = winner === 'local' ? 'Victory!' : 'Defeat';
+                document.getElementById('modal-title').className = winner === 'local' ? 'text-4xl font-bold mb-4 text-yellow-400 font-cinzel' : 'text-4xl font-bold mb-4 text-slate-400 font-cinzel';
+                
+                document.getElementById('modal-message').innerHTML = `${wName} reached 121 points first.<br><br>Final Score:<br>You: ${this.scores.local} | ${this.isMultiplayer?'Opponent':'Computer'}: ${this.scores.remote}`;
+                
+                const btn = document.getElementById('modal-btn');
+                btn.textContent = "Back to Lobby";
+                
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    content.classList.remove('scale-95', 'opacity-0');
+                    content.classList.add('scale-100', 'opacity-100');
+                }, 10);
+
+                btn.onclick = () => {
+                    location.reload(); 
+                };
+            }
+        }
+
+        // Initialize App
+        window.onload = () => {
+            new CribbageGame();
+        };
+    </script>
+</body>
+</html>
